@@ -1,0 +1,20 @@
+# Secrets — never bake these into the image
+.env
+credentials.json
+
+# Virtual environment — rebuilt inside the container by uv
+.venv
+
+# Python bytecode — not needed in image
+__pycache__
+*.pyc
+*.pyo
+
+# Git history — not needed at runtime
+.git
+.gitignore
+
+# Dev artifacts
+*.egg-info
+dist/
+build/

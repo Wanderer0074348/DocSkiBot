@@ -1,0 +1,17 @@
+services:
+
+  agent:
+    build: .
+    env_file: .env
+    ports:
+      - "${OAUTH_CALLBACK_PORT:-8080}:8080"
+    volumes:
+      - ./credentials.json:/app/credentials.json:ro
+      - agent_workspace:/root/AgentWorkspace
+    restart: unless-stopped
+
+
+volumes:
+  # Survives restarts. Only deleted with `docker compose down -v`.
+  # OAuth tokens are stored here under AgentWorkspace/tokens/
+  agent_workspace:
