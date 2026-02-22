@@ -3,15 +3,53 @@ services:
   agent:
     build: .
     env_file: .env
+    # The port binding below is only needed for local testing without Cloudflare
+    # Tunnel. When cloudflared is running it routes traffic to agent:8080 over an
+    # internal Docker network — no public port exposure is required.
+    # You can remove or comment out `ports` once Cloudflare Tunnel is set up.
     ports:
       - "${OAUTH_CALLBACK_PORT:-8080}:8080"
     volumes:
-      - ./credentials.json:/app/credentials.json:ro
+      - ./client_secret.json:/app/credentials.json:ro
       - agent_workspace:/root/AgentWorkspace
     restart: unless-stopped
 
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    # Makes an outbound connection to Cloudflare's edge and exposes agent:8080
+    # publicly over HTTPS — no inbound firewall rules or port forwarding needed.
+    #
+    # ── QUICK TUNNEL (current, no domain required) ─────────────────────────────
+    # Generates a random *.trycloudflare.com URL each time the container starts.
+    # After starting, run:
+    #   docker compose logs cloudflared
+    # and look for a line like:
+    #   Your quick Tunnel has been created! Visit it at: https://xxxx-xxxx.trycloudflare.com
+    # Then:
+    #   1. Set OAUTH_REDIRECT_URI=https://xxxx-xxxx.trycloudflare.com/oauth/callback in .env
+    #   2. Add that exact URL to Google Cloud Console → OAuth client → Authorised redirect URIs
+    #   3. Restart the agent: docker compose restart agent
+    # Repeat steps 1-3 whenever you restart the stack (URL changes each time).
+    command: tunnel --url http://agent:8080
+    #
+    # ── NAMED TUNNEL (persistent URL, requires a domain on Cloudflare) ──────────
+    # If you own a domain added to Cloudflare (even a cheap $1-3/yr one):
+    #   1. Zero Trust → Networks → Tunnels → Create a tunnel → Cloudflared
+    #   2. Copy the token → set CLOUDFLARE_TUNNEL_TOKEN in .env
+    #   3. In the tunnel dashboard → Public Hostnames → Add:
+    #        Subdomain : oauth   Domain : yourdomain.com   Service : http://agent:8080
+    #   4. Set OAUTH_REDIRECT_URI=https://oauth.yourdomain.com/oauth/callback in .env
+    #      (this URL is permanent — no need to update it on restarts)
+    # Then swap the command and environment block below:
+    #   command: tunnel --no-autoupdate run
+    #   environment:
+    #     - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - agent
+
 
 volumes:
-  # Survives restarts. Only deleted with `docker compose down -v`.
-  # OAuth tokens are stored here under AgentWorkspace/tokens/
+  # Persists across container restarts. Only deleted with `docker compose down -v`.
+  # OAuth tokens live here at AgentWorkspace/tokens/<discord_user_id>.json
   agent_workspace:

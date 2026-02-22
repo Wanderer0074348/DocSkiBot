@@ -1,3 +1,4 @@
+import logging
 import os
 import discord
 
@@ -5,6 +6,8 @@ from .. import auth
 from ..auth.server import set_discord_client
 from . import picker as picker_module
 from . import forms as forms_module
+
+logger = logging.getLogger(__name__)
 
 
 # ── Intents ───────────────────────────────────────────────────────────────────
@@ -137,8 +140,17 @@ async def process_message(user_id: str, content: str, channel: discord.abc.Messa
     from .agent import agent
 
     # Gate: if the user hasn't connected Google yet, send the auth link instead.
+    # get_auth_url() requires OAUTH_REDIRECT_URI to be set in .env — if it isn't,
+    # catch the KeyError and send a plain error message rather than crashing silently.
     if not auth.is_authenticated(user_id):
-        url = auth.get_auth_url(user_id)
+        try:
+            url = auth.get_auth_url(user_id)
+        except KeyError as e:
+            await channel.send(
+                f"⚠️ Bot misconfiguration: environment variable `{e}` is not set. "
+                "Ask the bot owner to check the `.env` file."
+            )
+            return
         await channel.send(
             "First, connect your Google account so I can access your Drive:",
             view=GoogleAuthView(url),
@@ -182,20 +194,28 @@ async def process_message(user_id: str, content: str, channel: discord.abc.Messa
 
 @client.event
 async def on_ready():
-    print(f"Agent online as {client.user} (ID: {client.user.id})")
-    set_discord_client(client)  # wire into OAuth callback server for DMs
+    logger.info("Agent online as %s (ID: %s)", client.user, client.user.id)
+    set_discord_client(client)
 
 
 @client.event
 async def on_message(message: discord.Message):
+    logger.debug("on_message: author=%s channel=%s content=%r",
+                 message.author, type(message.channel).__name__, message.content[:60])
     if message.author == client.user:
         return
     if not isinstance(message.channel, discord.DMChannel):
+        logger.debug("Ignored message from %s — not a DM", message.author)
         return
     if ALLOWED_USER_IDS and message.author.id not in ALLOWED_USER_IDS:
+        logger.warning("Ignored message from %s — not in allowlist", message.author.id)
         return
 
-    await process_message(str(message.author.id), message.content, message.channel)
+    logger.info("Processing DM from %s (ID: %s)", message.author, message.author.id)
+    try:
+        await process_message(str(message.author.id), message.content, message.channel)
+    except Exception:
+        logger.exception("Unhandled error in process_message for user %s", message.author.id)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

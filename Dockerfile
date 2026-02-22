@@ -9,6 +9,10 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
+# Force Python stdout/stderr to be unbuffered so logs appear in `docker compose logs`
+# immediately rather than being held in a buffer until the process exits.
+ENV PYTHONUNBUFFERED=1
+
 # Copy lockfile and project metadata BEFORE source code.
 # Docker caches layers by file changes — if pyproject.toml and uv.lock
 # haven't changed, the expensive `uv sync` step is skipped on rebuilds,
