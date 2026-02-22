@@ -26,3 +26,5 @@ desktop.ini
 .idea/
 *.swp
 *.swo
+
+client_secret.json
